@@ -1,0 +1,142 @@
+plugins {
+    id "com.android.application"
+}
+
+def signingProperties = [
+    storeFile: System.getenv("NOVACORE_ANDROID_KEYSTORE"),
+    storePassword: System.getenv("NOVACORE_ANDROID_STORE_PASSWORD"),
+    keyAlias: System.getenv("NOVACORE_ANDROID_KEY_ALIAS"),
+    keyPassword: System.getenv("NOVACORE_ANDROID_KEY_PASSWORD")
+]
+def hasReleaseSigning = signingProperties.values().every { it }
+
+// The packaged app runs from file:// and cannot reach the localhost proxy used by the web build.
+// This script installs the native DuckDuckGo bridge and allows only the required network origins.
+def androidBridgeScript = "<script src=\"novacore-android-bridge.js\"></script>"
+def androidContentPolicy = "connect-src 'self' https: http://localhost:* http://127.0.0.1:* https://generativelanguage.googleapis.com https://html.duckduckgo.com"
+
+android {
+    namespace "com.novacore.mobile"
+    compileSdk 35
+
+    // The project lives inside OneDrive, which locks files during sync and breaks directory deletes.
+    // Pass -PbuildDir=<path> to build outside the synced folder.
+    if (project.hasProperty("buildDir")) {
+        buildDir = file(project.property("buildDir"))
+    }
+
+    defaultConfig {
+        applicationId "com.novacore.mobile"
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            release {
+                storeFile file(signingProperties.storeFile)
+                storePassword signingProperties.storePassword
+                keyAlias signingProperties.keyAlias
+                keyPassword signingProperties.keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core:1.15.0"
+}
+
+tasks.register("prepareNovaCoreWebAssets", Copy) {
+    from("../../app.html") {
+        rename { "index.html" }
+        filter { line ->
+            line.replace(
+                "<script src=\"novacore-config.js\"></script>",
+                androidBridgeScript + "\n    <script src=\"novacore-config.js\"></script>"
+            ).replace(
+                "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
+                androidContentPolicy
+            )
+        }
+    }
+    // Kept outside src/main/assets: copying a file onto itself there was skipped as up to date,
+    // which silently shipped an APK with no on-device search.
+    from("src/androidShell/novacore-android-bridge.js")
+    from("../../style.css")
+    from("../../bootstrap.js")
+    from("../../novacore-config.js")
+    from("../../content-filter.js")
+    from("../../gemini-api.js")
+    from("../../renderer.js")
+    from("../../manifest.webmanifest")
+    from("../../service-worker.js")
+    from("../../icons") {
+        into("icons")
+    }
+    into("src/main/assets")
+}
+
+// Fails the build instead of shipping an APK whose search can only fall back to localhost.
+tasks.register("verifyNovaCoreWebAssets") {
+    dependsOn("prepareNovaCoreWebAssets")
+    doLast {
+        def assets = file("src/main/assets")
+        def bridge = new File(assets, "novacore-android-bridge.js")
+        def page = new File(assets, "index.html")
+        if (!bridge.isFile() || bridge.length() == 0L) {
+            throw new GradleException("novacore-android-bridge.js is missing from the packaged assets.")
+        }
+        if (!page.isFile() || !page.text.contains("novacore-android-bridge.js")) {
+            throw new GradleException("index.html does not load novacore-android-bridge.js; on-device search would fail.")
+        }
+    }
+}
+
+tasks.register("prepareNovaCoreLauncherIcon", Copy) {
+    from("../../icons/icon-512.png")
+    rename { "novacore_icon.png" }
+    into("src/main/res/drawable-nodpi")
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("verifyNovaCoreWebAssets", "prepareNovaCoreLauncherIcon")
+}
+
+tasks.register("verifyReleaseSigning") {
+    doLast {
+        if (!hasReleaseSigning) {
+            throw new GradleException(
+                "Release signing is not configured. Set NOVACORE_ANDROID_KEYSTORE, " +
+                "NOVACORE_ANDROID_STORE_PASSWORD, NOVACORE_ANDROID_KEY_ALIAS, and " +
+                "NOVACORE_ANDROID_KEY_PASSWORD in your local environment."
+            )
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "preReleaseBuild") {
+        dependsOn("verifyReleaseSigning")
+    }
+}

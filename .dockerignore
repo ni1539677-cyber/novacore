@@ -1,0 +1,14 @@
+node_modules
+dist
+android
+# downloads/ stays in the build context: the image ships the debug APK behind /app-debug.apk.
+.git
+.vscode
+*.exe
+*.test.js
+Dockerfile
+render.yaml
+.env
+.env.*
+QA-*.md
+EVOLUTION-WATCH.md

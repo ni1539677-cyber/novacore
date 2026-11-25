@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+android/.gradle/
+android/build/
+android/local.properties
+android/app/build/
+android/app/src/main/assets/
+android/app/src/main/res/drawable-nodpi/novacore_icon.png
+android/.signing/
+downloads/NovaCore-Android.apk
+# Gate artifacts from the deployment probe (kept out of the repo).
+deploy-gate/

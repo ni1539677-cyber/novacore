@@ -1,0 +1,23 @@
+# One-click Render Blueprint for the NovaCore page + search/Gemini proxy.
+# Deploy: Render Dashboard -> New -> Blueprint -> pick this repository.
+#
+# The service decides its own origin from the request Host header, so the public URL does not
+# have to be configured here. NOVACORE_PUBLIC_ORIGIN is only needed for callers on a *different*
+# origin, e.g. the .apk (origin "null") or a page hosted elsewhere.
+services:
+  - type: web
+    name: novacore-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NOVACORE_TRUST_PROXY
+        value: "true"
+      # Optional: allows the packaged Android app (file:// page, origin "null") to search through
+      # this instance. Omit it if only the hosted page uses this server.
+      # - key: NOVACORE_PUBLIC_ORIGIN
+      #   value: "null"
+      # Optional: lets users get Gemini answers without saving their own key.
+      - key: NOVACORE_GEMINI_API_KEY
+        sync: false

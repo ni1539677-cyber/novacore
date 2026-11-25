@@ -1,0 +1,62 @@
+{
+  "name": "novacore-local-search",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Privacy-conscious, local-first NovaCore app for desktop and mobile",
+  "main": "desktop-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:dist": "electron-builder",
+    "desktop:windows": "electron-builder --win nsis",
+    "check": "node --check server.js && node --check renderer.js && node --check bootstrap.js && node --check desktop-main.js && node --check preload.js && node --check gemini-api.js && node --check content-filter.js && node --check service-worker.js && node --check api/_proxy.js",
+    "test": "node --test",
+    "deploy:check": "powershell -NoProfile -ExecutionPolicy Bypass -File ./deploy-check.ps1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "electron": "^45.2.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.novacore.desktop",
+    "productName": "NovaCore",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "content-filter.js",
+      "desktop-main.js",
+      "preload.js",
+      "gemini-api.js",
+      "app.html",
+      "novacore-config.js",
+      "manifest.webmanifest",
+      "renderer.js",
+      "style.css",
+      "icons/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icons/icon.ico",
+      "artifactName": "NovaCore-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "NovaCore"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "icons/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "icons/icon-512.png"
+    }
+  }
+}

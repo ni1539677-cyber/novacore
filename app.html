@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b17" />
+    <meta name="description" content="Sign in or create a local NovaCore ID." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; base-uri 'self'; form-action 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: file:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="NovaCore" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <title>NovaCore ID</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="novacore-config.js"></script>
+    <script src="content-filter.js" defer></script>
+    <script src="gemini-api.js" defer></script>
+    <script src="renderer.js" defer></script>
+  </head>
+  <body>
+    <div class="space-backdrop" aria-hidden="true">
+      <div class="nebula nebula-violet"></div>
+      <div class="nebula nebula-blue"></div>
+      <div class="starfield"></div>
+    </div>
+
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="wordmark" href="#" aria-label="NovaCore home">
+          <span class="wordmark-emblem" aria-hidden="true"><span></span></span>
+          <span>Nova<span class="wordmark-accent">Core</span></span>
+        </a>
+        <div class="header-actions">
+          <button class="install-app" id="install-app" type="button" hidden>Install app</button>
+        </div>
+      </header>
+      <p class="install-status" id="install-status" role="status" aria-live="polite" hidden></p>
+
+      <main class="main-content">
+        <section class="auth-view" id="auth-view" aria-labelledby="auth-card-title">
+          <div class="auth-card">
+            <div class="auth-card-top">
+              <span class="card-kicker">WELCOME TO YOUR SPACE</span>
+              <span class="card-mark" aria-hidden="true">✦</span>
+            </div>
+
+            <h2 id="auth-card-title">NovaCore ID</h2>
+            <p class="card-description">One small step into your own universe.</p>
+
+            <div class="auth-tabs" role="tablist" aria-label="NovaCore ID options">
+              <button
+                class="auth-tab is-active"
+                id="login-tab"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="account-form"
+                data-mode="login"
+              >Sign in</button>
+              <button
+                class="auth-tab"
+                id="signup-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="account-form"
+                data-mode="signup"
+              >Create account</button>
+            </div>
+
+            <form class="account-form" id="account-form" novalidate>
+              <div class="form-field" id="name-field" hidden>
+                <label for="account-name">Display name</label>
+                <input id="account-name" name="name" type="text" autocomplete="name" maxlength="48" />
+              </div>
+              <div class="form-field">
+                <label for="account-email">NovaCore ID</label>
+                <input id="account-email" name="email" type="email" autocomplete="username" maxlength="254" required />
+                <span class="field-hint">Use an email address as your local ID.</span>
+              </div>
+              <div class="form-field">
+                <label for="account-password">Password</label>
+                <input id="account-password" name="password" type="password" autocomplete="current-password" minlength="12" required />
+                <span class="field-hint" id="password-hint" hidden>Use at least 12 characters.</span>
+              </div>
+              <div class="form-field" id="confirm-field" hidden>
+                <label for="account-confirm">Confirm password</label>
+                <input id="account-confirm" name="confirm" type="password" autocomplete="new-password" minlength="12" />
+              </div>
+
+              <p class="form-message" id="form-message" role="status" aria-live="polite"></p>
+              <button class="primary-button" id="account-submit" type="submit">
+                <span id="submit-label">Enter your space</span>
+                <span class="button-arrow" aria-hidden="true">↗</span>
+              </button>
+            </form>
+
+            <div class="local-note">
+              <span class="local-note-mark" aria-hidden="true">i</span>
+              <p>Account data stays in this browser's IndexedDB. Once you sign in, NovaCore keeps you signed in on this device using local storage, so you can close the browser and return without signing in again. Choosing “Sign out” removes that saved login. Passwords are salted and hashed, not encrypted. Accounts do not sync and cannot be recovered if browser data is erased.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="workspace-view" id="workspace-view" aria-labelledby="workspace-title" hidden>
+          <nav class="workspace-tabs" aria-label="Workspace tabs and navigation">
+            <div class="history-controls" aria-label="Workspace history">
+              <button id="history-back" type="button" aria-label="Go back" title="Go back" disabled>‹</button>
+              <button id="history-forward" type="button" aria-label="Go forward" title="Go forward" disabled>›</button>
+            </div>
+            <div class="workspace-tab-list" id="workspace-tab-list" role="tablist" aria-label="Open workspaces"></div>
+            <button class="new-workspace-tab" id="new-workspace-tab" type="button" aria-label="Open a new workspace tab" title="Open a new workspace tab">+</button>
+          </nav>
+          <div class="workspace-main" id="workspace-main" role="tabpanel">
+            <div class="workspace-welcome">
+              <p class="eyebrow"><span class="eyebrow-line"></span> YOUR SPACE IS READY</p>
+              <h1 id="workspace-title">Welcome in,<br /><span id="member-name">traveler</span><span class="title-period">.</span></h1>
+              <p class="intro-copy">Take a breath. Find a thread worth following.</p>
+            </div>
+
+            <form class="workspace-search" id="workspace-search-form" role="search">
+              <label class="sr-only" for="workspace-query">Search the live web and images</label>
+              <input id="workspace-query" type="search" maxlength="4000" autocomplete="off" placeholder="Search the web in any language..." />
+              <button type="submit"><span id="search-submit-label">Search web</span> <span aria-hidden="true">⌕</span></button>
+            </form>
+            <div class="live-search-consent">
+              <p>Strict SafeSearch is always on. NovaCore blocks adult or explicit searches before they leave this device; permitted queries go to DuckDuckGo through NovaCore's local proxy, so results appear right here with no paid API key. Image thumbnails load from their source websites and links open in your browser.</p>
+              <p id="live-search-status" role="status" aria-live="polite">Your query stays in this browser until you submit a search.</p>
+            </div>
+
+            <section class="search-results" id="search-results" aria-labelledby="search-results-title" aria-live="polite" hidden>
+              <div class="search-results-heading">
+                <div>
+                  <p class="card-kicker" id="search-results-label">LIVE SEARCH</p>
+                  <h2 id="search-results-title"></h2>
+                </div>
+                <span class="search-result-count" id="search-result-count"></span>
+              </div>
+              <div class="search-answer" id="search-answer"></div>
+              <div class="search-media-toolbar" hidden>
+                <p class="card-kicker" id="search-media-heading">REAL IMAGES</p>
+                <div class="search-media-filters" role="group" aria-label="Filter live search results">
+                  <button type="button" class="is-active" data-media-filter="all" aria-pressed="true">All results</button>
+                  <button type="button" data-media-filter="images" aria-pressed="false">Images</button>
+                </div>
+              </div>
+              <div class="search-media-grid" id="search-media-grid"></div>
+              <div class="search-result-list" id="search-result-list"></div>
+              <p class="search-results-note" id="search-results-note"></p>
+            </section>
+
+            <section class="compose-card" aria-labelledby="compose-title">
+              <div class="compose-heading">
+                <div>
+                  <p class="card-kicker">A CLEAR SKY FOR YOUR THOUGHTS</p>
+                  <h2 id="compose-title">Where shall we begin?</h2>
+                </div>
+                <span class="compose-spark" aria-hidden="true">✳</span>
+              </div>
+              <form id="prompt-form">
+                <label for="prompt-input">Ask NovaCore AI</label>
+                <textarea id="prompt-input" rows="4" maxlength="4000" aria-describedby="prompt-hint"></textarea>
+                <div class="voice-controls">
+                  <label class="voice-language-label" for="voice-language">Voice language</label>
+                  <select id="voice-language" aria-label="Voice input and speech language">
+                    <option value="auto">Automatic / device default</option>
+                    <option value="bn-BD">বাংলা</option>
+                    <option value="en-US">English</option>
+                  </select>
+                  <button class="primary-button compose-button voice-button" id="voice-input" type="button">Use voice</button>
+                </div>
+                <p class="prompt-hint" id="prompt-hint">Gemini can answer in English and Bengali and use Google Search for current information. Voice input/output uses browser speech features when available. Enter to ask · Shift+Enter for a new line.</p>
+                <p class="voice-status" id="voice-status" role="status" aria-live="polite">Voice is optional. Your microphone is used only after you press “Use voice.”</p>
+                <div class="compose-bottom">
+                  <p id="prompt-notice" aria-live="polite">Add a Gemini API key in Gemini AI settings to get live answers.</p>
+                  <div class="compose-actions">
+                    <button class="primary-button compose-button" id="save-thought" type="button">
+                      Keep this thought
+                    </button>
+                    <button class="primary-button compose-button" id="compose-thought" type="submit">
+                      Ask NovaCore <span class="button-arrow" aria-hidden="true">↗</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+              <details class="ai-settings" id="ai-settings">
+                <summary>Gemini AI settings</summary>
+                <form id="gemini-key-form">
+                  <label for="gemini-api-key">Google AI Studio API key</label>
+                  <input id="gemini-api-key" name="apiKey" type="password" maxlength="512" autocomplete="off" autocapitalize="off" spellcheck="false" />
+                  <div class="ai-settings-actions">
+                    <button class="feed-refresh" type="submit" id="save-gemini-key">Save key</button>
+                    <button class="feed-refresh" type="button" id="remove-gemini-key">Remove key</button>
+                    <a class="feed-refresh" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Get an API key ↗</a>
+                  </div>
+                  <p class="ai-settings-note">Your prompts are sent to Google Gemini with Google Search grounding. Desktop saves the key using OS encryption; browser storage is local but not encrypted. Never share your key.</p>
+                  <p class="ai-key-status" id="gemini-key-status" role="status" aria-live="polite">Add an API key to use live Gemini answers.</p>
+                </form>
+              </details>
+            </section>
+
+            <section class="local-response" id="local-response" aria-labelledby="response-title" aria-live="polite" hidden>
+              <div class="response-heading">
+                <p class="card-kicker">GEMINI · GOOGLE SEARCH GROUNDED</p>
+                <h2 id="response-title"></h2>
+              </div>
+              <p class="response-prompt" id="response-prompt"></p>
+              <p class="response-intro" id="response-intro"></p>
+              <div class="response-sources" id="response-sources" hidden>
+                <p class="card-kicker">SOURCES</p>
+                <ul id="response-source-list"></ul>
+              </div>
+              <ol class="response-steps" id="response-steps"></ol>
+              <button class="primary-button compose-button voice-button" id="speak-response" type="button" hidden>Read response aloud</button>
+              <div class="response-code" id="response-code" hidden>
+                <div class="response-code-heading">
+                  <span>SUGGESTED CODE · REVIEW BEFORE USE</span>
+                  <button class="copy-code-button" id="copy-code" type="button">Copy code</button>
+                </div>
+                <pre><code id="response-code-content"></code></pre>
+              </div>
+              <p class="response-note">Gemini may make mistakes. Check cited sources and review generated code before use. NovaCore does not execute generated code. Google Search grounding availability and API usage are subject to your Google account and API terms.</p>
+            </section>
+
+            <section class="feed-card" aria-labelledby="feed-heading" hidden>
+              <div class="feed-heading-row">
+                <div>
+                  <p class="card-kicker">OFFLINE SOURCE LAB</p>
+                  <h2 id="feed-heading">Developer signal</h2>
+                </div>
+                <button class="feed-refresh" id="refresh-feed" type="button">Refresh local feed <span aria-hidden="true">↻</span></button>
+              </div>
+              <p class="feed-description">A simulated feed for trying assistant workflows. No websites, social networks, or external sources are contacted.</p>
+              <div class="feed-list" id="feed-list" aria-live="polite"></div>
+              <form class="source-form" id="source-form">
+                <label for="source-input">Analyze local source text</label>
+                <textarea id="source-input" rows="3" maxlength="8000" placeholder="Paste a code excerpt, release note, or technical note to analyze on this device..."></textarea>
+                <div class="source-form-bottom">
+                  <p id="source-status" aria-live="polite">Pasted text stays in this tab and is never executed.</p>
+                  <button class="feed-refresh source-analyze" type="submit">Analyze locally <span aria-hidden="true">↗</span></button>
+                </div>
+              </form>
+            </section>
+
+            <section class="evolution-card" aria-labelledby="evolution-heading" hidden>
+              <div class="evolution-heading">
+                <div>
+                  <p class="card-kicker">LOCAL SELF-EVOLUTION</p>
+                  <h2 id="evolution-heading">Signal watch</h2>
+                </div>
+                <span class="evolution-live"><span></span> DEVICE ONLY</span>
+              </div>
+              <p class="evolution-description">NovaCore checks local UI signals and can run a read-only scan of its bundled JavaScript syntax, required files, and key features. It never sends source to the web or edits application code automatically.</p>
+              <div class="evolution-status" id="evolution-status" role="status" aria-live="polite">Starting a local signal scan…</div>
+              <div class="evolution-signals" id="evolution-signals"></div>
+              <div class="evolution-status" id="application-diagnostics-status" role="status" aria-live="polite">Application diagnostics have not run yet.</div>
+              <div class="evolution-signals" id="application-diagnostics"></div>
+              <div class="evolution-proposal" id="evolution-proposal" hidden>
+                <div>
+                  <p class="evolution-proposal-label">REVIEWABLE UI SUGGESTION</p>
+                  <h3 id="evolution-proposal-title"></h3>
+                  <p id="evolution-proposal-summary"></p>
+                </div>
+                <button class="feed-refresh" id="review-evolution" type="button">Review change</button>
+              </div>
+              <div class="evolution-actions">
+                <button class="feed-refresh" id="scan-evolution" type="button">Scan local signals</button>
+                <button class="feed-refresh" id="scan-application" type="button">Check application</button>
+                <button class="evolution-undo" id="undo-evolution" type="button" hidden>Undo approved UI tune</button>
+              </div>
+              <p class="evolution-boundary">Read-only local checks · application code is never rewritten or executed from a suggestion · UI tuning stays predefined and reviewable.</p>
+            </section>
+
+            <section class="tool-section" aria-labelledby="tool-heading">
+              <div class="section-title-row">
+                <div>
+                  <p class="card-kicker">A FEW WAYS TO GET MOVING</p>
+                  <h2 id="tool-heading">Choose your orbit</h2>
+                </div>
+                <span class="tool-count">04 / TOOLS</span>
+              </div>
+              <div class="tool-grid">
+                <button class="tool-card tool-create" type="button" data-prompt="Help me create a first draft of: ">
+                  <span class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m14.5 5.5 4 4M4 20l4.3-1 10.9-10.9a2.1 2.1 0 0 0-3-3L5.3 16 4 20Z" /><path d="M12 20h8" /></svg></span>
+                  <span><strong>Create</strong><small>Give an idea its first shape</small></span>
+                  <span class="tool-arrow" aria-hidden="true">↗</span>
+                </button>
+                <button class="tool-card tool-discover" type="button" data-prompt="Help me explore this topic and find useful directions: ">
+                  <span class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 14.2 9.8 21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2L12 3Z" /><path d="m19 3 .7 2.3L22 6l-2.3.7L19 9l-.7-2.3L16 6l2.3-.7L19 3Z" /></svg></span>
+                  <span><strong>Discover</strong><small>Follow a fresh direction</small></span>
+                  <span class="tool-arrow" aria-hidden="true">↗</span>
+                </button>
+                <button class="tool-card tool-plan" type="button" data-prompt="Help me make a clear, practical plan for: ">
+                  <span class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12" /><path d="m3.5 6 .8.8L6 5m-2.5 7 .8.8L6 11m-2.5 7 .8.8L6 17" /></svg></span>
+                  <span><strong>Plan</strong><small>Turn a goal into steps</small></span>
+                  <span class="tool-arrow" aria-hidden="true">↗</span>
+                </button>
+                <button class="tool-card tool-focus" type="button" data-prompt="Help me find the next useful step for: ">
+                  <span class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 4H5v3m11-3h3v3M5 17v3h3m11-3v3h-3" /><circle cx="12" cy="12" r="4" /><path d="m10.5 12 1 1 2-2" /></svg></span>
+                  <span><strong>Focus</strong><small>Find the next right thing</small></span>
+                  <span class="tool-arrow" aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <aside class="space-panel" aria-label="NovaCore AI sidebar">
+            <div class="panel-topline">
+              <span class="panel-emblem" aria-hidden="true">✦</span>
+              <span>NOVACORE AI</span>
+              <button class="signout-button" id="signout-button" type="button">Sign out</button>
+            </div>
+
+            <div class="panel-planet" aria-hidden="true">
+              <span class="planet-halo"></span>
+              <span class="planet-body"></span>
+              <span class="planet-dot"></span>
+            </div>
+
+            <p class="panel-label" id="member-label">YOUR NOVACORE ID</p>
+            <p class="member-id" id="member-id"></p>
+
+            <div class="orbit-status">
+              <span class="status-indicator"></span>
+              <span><strong id="assistant-engine-status">GEMINI AI · SETUP NEEDED</strong><small id="assistant-engine-detail">Add an API key to enable live answers.</small></span>
+            </div>
+
+            <div class="orbit-status">
+              <span class="status-indicator"></span>
+              <span><strong id="search-engine-status">DUCKDUCKGO · READY</strong><small id="search-engine-detail">Live web and image results through NovaCore's local proxy. No API key.</small></span>
+            </div>
+
+            <div class="panel-divider"></div>
+
+            <p class="panel-label">YOUR THOUGHTS STAY YOURS</p>
+            <p class="panel-copy">Prompts go to Google Gemini for live answers and search queries go to DuckDuckGo through NovaCore's local server. API keys stay on this device. NovaCore does not run generated code.</p>
+
+            <div class="panel-coordinates" aria-hidden="true">
+              <span>NC — 01</span><span>DEEP SPACE</span>
+            </div>
+          </aside>
+        </section>
+
+        <dialog class="evolution-dialog" id="evolution-review-dialog" aria-labelledby="evolution-review-title">
+          <form method="dialog" class="evolution-dialog-content">
+            <p class="card-kicker">CHANGE PREVIEW · NO CODE EXECUTION</p>
+            <h2 id="evolution-review-title">Review UI suggestion</h2>
+            <p id="evolution-review-reason"></p>
+            <div class="evolution-diff">
+              <div><span>BEFORE</span><code id="evolution-before"></code></div>
+              <div><span>PROPOSED</span><code id="evolution-after"></code></div>
+            </div>
+            <p class="evolution-dialog-note">This change is limited to a predefined CSS design token. Applying it changes only this browser session; it cannot edit project files or run code.</p>
+            <div class="evolution-dialog-actions">
+              <button class="feed-refresh" id="cancel-evolution" type="submit" value="cancel">Keep current design</button>
+              <button class="primary-button compose-button" id="apply-evolution" type="button">Apply reviewed tune</button>
+            </div>
+          </form>
+        </dialog>
+      </main>
+
+    </div>
+  </body>
+</html>
