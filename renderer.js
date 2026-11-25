@@ -10,23 +10,34 @@ const localDatabaseName = "novacore-local";
 const localDatabaseVersion = 1;
 const maxTabHistory = 30;
 const maxSearchResults = 8;
-// The API can live on a different origin than the page (static hosting + hosted proxy). Set
-// window.NOVACORE_API_BASE in app.html to an absolute API origin to point the page at it;
-// otherwise the same-origin localhost server is used.
+// The API can live on a different origin than the page (static hosting + hosted proxy).
+//
+// Pages served by NovaCore itself, and every packaged build (the Electron .exe and the Android
+// .apk both load from file://), use the live production server unless novacore-config.js sets
+// window.NOVACORE_API_BASE. A page served from anywhere else keeps its own origin, because a
+// different site is still refused there by the server's origin check.
+const liveApiBaseUrl = "https://novacore-0ik3.onrender.com";
+const isDesktopShell = typeof location !== "undefined" && location.protocol === "file:";
+const pageHostname = typeof location === "undefined" ? "" : String(location.hostname || "").toLowerCase();
+// `npm start` serves /api/* from the same origin, so it must keep relative URLs.
+const isLocalDevServer = pageHostname === "localhost" || pageHostname === "127.0.0.1" ||
+  pageHostname === "::1" || pageHostname === "[::1]" || pageHostname === "0.0.0.0";
+// A NovaCore-hosted page (e.g. on Render) talks to the live server it is served from.
+const isNovaCoreHostedPage = !isLocalDevServer && pageHostname.endsWith(".onrender.com");
 const apiBaseUrl = (() => {
   const configured = typeof window.NOVACORE_API_BASE === "string" ? window.NOVACORE_API_BASE.trim() : "";
-  if (!configured) return "";
-  try {
-    const url = new URL(configured, location.href);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
-    return url.origin;
-  } catch {
-    return "";
+  if (configured) {
+    try {
+      const url = new URL(configured, location.href);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.origin;
+    } catch {
+      // Fall through to the default below instead of leaving the app with no API.
+    }
   }
+  if (isLocalDevServer) return "";
+  return isDesktopShell || isNovaCoreHostedPage ? liveApiBaseUrl : "";
 })();
-const isDesktopShell = typeof location !== "undefined" && location.protocol === "file:";
-const apiEndpointLabel = apiBaseUrl ||
-  (isDesktopShell ? "a local NovaCore server" : location.origin);
+const apiEndpointLabel = apiBaseUrl || location.origin;
 const geminiProxyPath = `${apiBaseUrl}/api/gemini`;
 const searchProxyPath = `${apiBaseUrl}/api/search`;
 const searchProxyTimeoutMs = 25_000;
@@ -1690,6 +1701,10 @@ const fetchDesktopSearch = async (query) => {
       warnings: Array.isArray(result?.warnings) ? result.warnings.filter((item) => typeof item === "string") : [],
     };
   } catch (error) {
+    // The desktop app normally searches from its own main process. If that lookup fails (DuckDuckGo
+    // blocked the request, or the network dropped) the live server is still tried before giving up,
+    // instead of failing a search the deployed API could have answered.
+    if (apiBaseUrl) return null;
     const detail = error instanceof Error && error.message
       ? error.message.replace(/^Error invoking remote method '[^']*': (?:\w*Error: )?/, "")
       : "";
@@ -2217,8 +2232,9 @@ const generateBrowserResponse = async (prompt) => {
   const apiKey = typeof localSettings.geminiApiKey === "string" ? localSettings.geminiApiKey.trim() : "";
   if (!apiKey) throw new Error("Add your Gemini API key in Gemini AI settings before asking for a live answer.");
   let response;
-  if (isDesktopShell && typeof window.NovaCoreGemini?.generateGeminiResponse === "function") {
-    // The Android build has no localhost Gemini proxy, so call Google directly with the saved key.
+  if (isDesktopShell && !apiBaseUrl && typeof window.NovaCoreGemini?.generateGeminiResponse === "function") {
+    // Only reached when a packaged build has no API origin at all: call Google directly with the
+    // saved key. With the live server configured, the proxy below is used instead.
     const direct = await window.NovaCoreGemini.generateGeminiResponse({ apiKey, prompt });
     if (!direct || typeof direct.text !== "string" || !direct.text.trim()) {
       throw new Error("Google Gemini returned no answer. Try rephrasing the prompt.");

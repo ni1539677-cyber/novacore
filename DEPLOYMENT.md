@@ -198,23 +198,39 @@ Docker is **not** currently installed on this machine, so this step is optional.
 ## 2. Make the apps use the live server (instead of localhost)
 
 The desktop and Android builds load their page from disk (`file://`), where `/api/...` does not
-exist. They therefore need an absolute API origin in `novacore-config.js`:
+exist. `renderer.js` therefore defaults every packaged build to the live production server:
 
 ```js
-window.NOVACORE_API_BASE = "https://novacore-api.onrender.com";
+const liveApiBaseUrl = "https://novacore-0ik3.onrender.com";
 ```
+
+How the origin is chosen (see the block at the top of `renderer.js`):
+
+| Where the page runs | API origin used |
+| --- | --- |
+| Packaged `.exe` / `.apk` (`file://`) | the live server |
+| A NovaCore page hosted on `*.onrender.com` | the live server |
+| `npm start` on `localhost` / `127.0.0.1` | same origin (the server serves `/api/*`) |
+| Any other site | its own origin (still refused by the server) |
 
 Rules:
 
+- `novacore-config.js` ships `window.NOVACORE_API_BASE = ""`; set it only to override the default
+  (e.g. a staging host). A set value always wins, including for `npm start`.
 - Use `https://` — a `file://` page calling `http://` is blocked as mixed content.
-- Leave it empty **only** for the browser version served by the same server.
-- Whenever it is set, the server must also allow the packaged origin:
-  `NOVACORE_PUBLIC_ORIGIN=null` (a `file://` page sends `Origin: null`).
-- `novacore-config.js` is also used by `npm start` and the Docker image, so keep a copy of the empty
-  version (or set your production value last, right before building) if you still run locally.
+- The server must allow the packaged origin, or the API answers **403**:
+  `NOVACORE_PUBLIC_ORIGIN=null` (a `file://` page sends `Origin: null`). `render.yaml` sets this
+  already. Verify with a request that sends `Origin: null`:
 
-`desktop-main.js` and `android/app/build.gradle` copy the file in as-is, so edit it **before**
-building.
+  ```powershell
+  $u = "https://novacore-0ik3.onrender.com"
+  (Invoke-WebRequest "$u/api/search" -Method Post -UseBasicParsing `
+    -Headers @{ Origin = "null"; "Content-Type" = "application/json" } `
+    -Body '{"query":"astronomy"}').StatusCode   # must be 200, not 403
+  ```
+
+`desktop-main.js` and `android/app/build.gradle` copy `novacore-config.js` and `renderer.js` into the
+build, so rebuild after changing either one.
 
 ---
 

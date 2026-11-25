@@ -14,10 +14,10 @@ services:
     envVars:
       - key: NOVACORE_TRUST_PROXY
         value: "true"
-      # Optional: allows the packaged Android app (file:// page, origin "null") to search through
-      # this instance. Omit it if only the hosted page uses this server.
-      # - key: NOVACORE_PUBLIC_ORIGIN
-      #   value: "null"
+      # The packaged Windows .exe / Android .apk load their page from file://, so they call the live
+      # server with Origin "null". Without this entry the API answers them 403.
+      - key: NOVACORE_PUBLIC_ORIGIN
+        value: "null"
       # Optional: lets users get Gemini answers without saving their own key.
       - key: NOVACORE_GEMINI_API_KEY
         sync: false

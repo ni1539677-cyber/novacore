@@ -11,5 +11,5 @@ android/app/src/main/assets/
 android/app/src/main/res/drawable-nodpi/novacore_icon.png
 android/.signing/
 downloads/NovaCore-Android.apk
-# Gate artifacts from the deployment probe (kept out of the repo).
-deploy-gate/
+# The deploy-gate/ verification scripts are committed; only their local build output is ignored.
+deploy-gate/*.log
