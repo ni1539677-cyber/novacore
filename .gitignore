@@ -18,3 +18,6 @@ dist/NovaCore Setup 1.0.0.exe
 dist/NovaCore Setup 1.0.0.exe.blockmap
 # The deploy-gate/ verification scripts are committed; only their local build output is ignored.
 deploy-gate/*.log
+
+# Commit message scratch file, never part of the repository.
+.commit-message.txt
