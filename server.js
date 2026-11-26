@@ -47,7 +47,7 @@ const maxApiKeyLength = 512;
 const rateWindowMs = 60_000;
 const rateLimit = 30;
 const rateBuckets = new Map();
-const diagnosticFiles = ["server.js", "renderer.js", "bootstrap.js", "content-filter.js", "gemini-api.js", "index.html", "app.html", "landing.html", "style.css"];
+const diagnosticFiles = ["server.js", "renderer.js", "bootstrap.js", "content-filter.js", "gemini-api.js", "duckduckgo-search.js", "Dockerfile", ".dockerignore", "index.html", "app.html", "landing.html", "style.css"];
 const staticFiles = new Map([
   // The root and /landing.html are the product landing page (download buttons + "Enter NovaCore");
   // the app itself lives at /index.html and /app.html. Packaged Android builds load index.html.
@@ -188,8 +188,11 @@ const server = http.createServer(async (request, response) => {
     try {
       stats = await fs.promises.stat(filePath);
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-        sendJson(response, 404, { error: "This NovaCore download has not been built yet." });
+      if (error && typeof error === "object" && "code" in error && (error.code === "ENOENT" || error.code === "EACCES")) {
+        // EACCES means the file shipped with unreadable permissions (a 0600 copy under `USER node`);
+        // a bug report of "File wasn't available on site" is useless, so name the real cause.
+        console.error(`Download ${requestUrl.pathname} unreadable (${error.code}) from ${file[0]}.`);
+        sendJson(response, 404, { error: "This NovaCore download is not available in this deployment." });
         return;
       }
       console.error("NovaCore download file could not be read:", error instanceof Error ? error.message : "Unknown error");
@@ -210,7 +213,12 @@ const server = http.createServer(async (request, response) => {
     const installer = fs.createReadStream(filePath);
     installer.on("error", (error) => {
       console.error("Installer download failed:", error instanceof Error ? error.message : "Unknown error");
-      response.destroy();
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
+      // The stream failed before any bytes went out: answer cleanly instead of closing the socket.
+      sendJson(response, 404, { error: "This NovaCore download is not available in this deployment." });
     });
     installer.pipe(response);
     return;

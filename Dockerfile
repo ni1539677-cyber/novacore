@@ -11,9 +11,6 @@ WORKDIR /app
 # Only the files the server actually serves/needs. No node_modules required.
 # Every local module server.js requires must be listed here, or the container starts and then
 # exits with "Cannot find module". The RUN below proves the list is complete at build time.
-COPY package.json server.js gemini-api.js content-filter.js duckduckgo-search.js ./
-COPY app.html landing.html style.css bootstrap.js novacore-config.js renderer.js manifest.webmanifest service-worker.js ./
-COPY icons ./icons
 # Download routes served by server.js (staticFiles):
 #   /app-setup.exe, /downloads/app-setup.exe, /downloads/NovaCore-Setup-1.0.0.exe
 #                              -> dist/NovaCore-Setup-1.0.0.exe
@@ -21,10 +18,12 @@ COPY icons ./icons
 #                              -> downloads/app-debug.apk / downloads/NovaCore-Android-debug.apk
 # Both are committed build outputs, so the image ships them. A route whose file is absent answers
 # 404 "not built yet", which a visitor sees as "File wasn't available on site".
-# The installer is a *web* installer: a ~1.3 MB stub (app-setup.exe) that downloads its payload.
-# Both files are committed under dist/ and copied here, so /app-setup.exe hands the user the stub and
-# /dist/novacore-local-search-1.0.0-x64.nsis.7z serves the payload it fetches.
-ARG NOVACORE_PUBLIC_URL=https://novacore-0ik3.onrender.com
+# The Windows installer is a *web* installer: /app-setup.exe hands the user a ~1.3 MB stub that
+# downloads its payload from /dist/novacore-local-search-1.0.0-x64.nsis.7z on this same image.
+# .dockerignore must never exclude dist/ or *.exe. Copies are split so a missing path is obvious.
+COPY package.json server.js gemini-api.js content-filter.js duckduckgo-search.js ./
+COPY app.html landing.html style.css bootstrap.js novacore-config.js renderer.js manifest.webmanifest service-worker.js ./
+COPY icons ./icons
 COPY dist/NovaCore-Setup-1.0.0.exe ./dist/NovaCore-Setup-1.0.0.exe
 COPY dist/novacore-local-search-1.0.0-x64.nsis.7z ./dist/novacore-local-search-1.0.0-x64.nsis.7z
 COPY dist/latest.yml ./dist/latest.yml
@@ -38,6 +37,9 @@ RUN node -e "require('./server.js'); require('./content-filter.js'); require('./
   && node -e "const fs=require('fs');const need=['dist/NovaCore-Setup-1.0.0.exe','dist/novacore-local-search-1.0.0-x64.nsis.7z','downloads/app-debug.apk','downloads/NovaCore-Android-debug.apk'];const missing=need.filter((f)=>!fs.existsSync(f)||fs.statSync(f).size<100000);if(missing.length){console.error('Missing or truncated download(s): '+missing.join(', '));process.exit(1);}console.log('Downloads ready:',need.map((f)=>f+'='+fs.statSync(f).size).join(' '));"
 
 # Run as the unprivileged user that ships with the official Node images.
+# The downloads must be world-readable: a file copied with 0600 (which is what some Windows tooling
+# writes) would leave /app-setup.exe answering 500 once the process drops to `node`.
+RUN chmod -R a+rX /app && find /app/dist /app/downloads -type f -exec chmod a+r {} +
 USER node
 
 # Many providers assign a dynamic PORT; EXPOSE is documentation only, the server reads PORT.

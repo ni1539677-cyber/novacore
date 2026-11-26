@@ -1,14 +1,34 @@
+# Docker build context for the Render image.
+#
+# Must NOT exclude anything the Dockerfile COPYs:
+#   package.json server.js gemini-api.js content-filter.js duckduckgo-search.js
+#   app.html landing.html style.css bootstrap.js novacore-config.js renderer.js
+#   manifest.webmanifest service-worker.js icons/ build-windows-installer.ps1
+#   dist/NovaCore-Setup-1.0.0.exe  dist/novacore-local-search-1.0.0-x64.nsis.7z  dist/latest.yml
+#   downloads/app-debug.apk  downloads/NovaCore-Android-debug.apk
+# Excluding dist/ or *.exe here makes those COPYs fail and the deploy stops in seconds.
+
+# Not runtime: the Electron/PWA shells, sources, tests and docs.
 node_modules
-dist
 android
-# downloads/ stays in the build context: the image ships the debug APK behind /app-debug.apk.
-.git
+api
+deploy-gate
 .vscode
-*.exe
+.git
+
 *.test.js
+*.log
+*.md
+deploy-check.ps1
+build-release.ps1
+docker-compose.yml
 Dockerfile
 render.yaml
+vercel.json
 .env
 .env.*
-QA-*.md
-EVOLUTION-WATCH.md
+!icons
+
+# Local scratch files, never part of the image.
+tmp-probe.js
+.qa-verify-builds.ps1
