@@ -544,6 +544,7 @@ function readJsonBody(request) {
 const {
   fetchDuckDuckGoWeb,
   fetchDuckDuckGoImages,
+  searchWithFallback,
   parseDuckDuckGoWebResults,
   mapDuckDuckGoInstantAnswer,
 } =
@@ -596,45 +597,34 @@ async function handleSearch(request, response) {
     if (!response.writableEnded) controller.abort();
   });
 
-  const [web, images] = await Promise.allSettled([
-    fetchDuckDuckGoWeb(query, controller.signal),
-    fetchDuckDuckGoImages(query, controller.signal),
-  ]);
-  if (controller.signal.aborted) return;
-
-  const webResults = web.status === "fulfilled"
-    ? web.value.filter((result) => !contentFilter.containsBlockedTerm(
-      `${result.title} ${result.description} ${result.source} ${result.url}`,
-    ))
-    : [];
-  const imageResults = images.status === "fulfilled"
-    ? images.value.filter((result) => !contentFilter.containsBlockedTerm(
-      `${result.title} ${result.source} ${result.pageUrl} ${result.imageUrl}`,
-    ))
-    : [];
-  const warnings = [];
-  if (web.status === "rejected") {
-    warnings.push(`Web results unavailable: ${web.reason?.message || "DuckDuckGo search failed."}`);
-  }
-  if (images.status === "rejected") {
-    warnings.push(`Image results unavailable: ${images.reason?.message || "DuckDuckGo image search failed."}`);
-  }
-
-  if (warnings.length === 2) {
-    const failures = [web.reason, images.reason];
-    const message = failures.find((error) => error.status === 503)?.message ||
-      failures.find((error) => error.status === 429)?.message ||
-      failures.find((error) => error.message)?.message ||
-      "DuckDuckGo could not complete the search. Check the network connection and try again.";
-    const status = failures.some((error) => error.status === 503)
-      ? 503
-      : failures.some((error) => error.status === 429) ? 429 : 502;
-    sendJson(response, status, { error: message });
+  let outcome;
+  try {
+    // searchWithFallback bounds every upstream call and falls back to Wikipedia, so this returns
+    // results (with warnings) instead of throwing whenever any source answers in time.
+    outcome = await searchWithFallback(query, { signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted || response.destroyed) return;
+    const failed = error && typeof error === "object" ? error : {};
+    const status = failed.status === 503 ? 503 : failed.status === 429 ? 429 : 502;
+    const message = typeof failed.message === "string" && failed.message
+      ? failed.message
+      : "Search is temporarily unavailable. Try again in a moment.";
+    console.error(`Search failed for a ${query.length}-character query: ${message}`);
+    sendJson(response, status, { error: message, provider: "DuckDuckGo" });
     return;
   }
+  if (controller.signal.aborted || response.destroyed) return;
 
+  const keep = (result) => !contentFilter.containsBlockedTerm(
+    `${result.title} ${result.description || ""} ${result.source || ""} ${result.url} ${result.pageUrl || ""} ${result.imageUrl || ""}`,
+  );
+  const webResults = Array.isArray(outcome.webResults) ? outcome.webResults.filter(keep) : [];
+  const imageResults = Array.isArray(outcome.imageResults) ? outcome.imageResults.filter(keep) : [];
+  const warnings = Array.isArray(outcome.warnings) ? outcome.warnings.filter((item) => typeof item === "string") : [];
+
+  // A fallback source returning nothing is still an answer; the UI shows its warnings and advice.
   sendJson(response, 200, {
-    provider: "DuckDuckGo",
+    provider: outcome.provider || "DuckDuckGo",
     query,
     webResults,
     imageResults,
