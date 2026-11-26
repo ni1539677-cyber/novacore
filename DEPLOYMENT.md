@@ -21,7 +21,7 @@ Understand this first; almost every deployment failure is an origin problem.
 | Server bound to `localhost` / `127.0.0.1` (the `npm start` default) | Only that device's own page |
 | Server bound to `0.0.0.0` (a tunnel, container, VPS, Render/Fly/Railway) | Yes for the page served by that same server, on **any** domain |
 | A different website calling your API | No, unless listed in `NOVACORE_PUBLIC_ORIGIN` |
-| The packaged `.exe` / `.apk` (a `file://` page, origin `null`) | No, unless `NOVACORE_PUBLIC_ORIGIN` includes `null` |
+| The packaged `.exe` / `.apk` (a `file://` page, origin `null`) | No, unless `NOVACORE_PUBLIC_ORIGIN` includes `null` — **required for the shipped clients** |
 
 When bound publicly, the server compares the browser's `Origin` with the request's own `Host`
 header. That is why a tunnel (`https://abc.trycloudflare.com`) or a host domain
@@ -197,6 +197,10 @@ Docker is **not** currently installed on this machine, so this step is optional.
 
 ## 2. Make the apps use the live server (instead of localhost)
 
+Both shipped clients point at **`https://novacore-0ik3.onrender.com`** by default, so no manual
+configuration is needed after installing them. See [BUILD-ENVIRONMENT.md](BUILD-ENVIRONMENT.md) for
+the exact commands used to rebuild them on this machine.
+
 The desktop and Android builds load their page from disk (`file://`), where `/api/...` does not
 exist. `renderer.js` therefore defaults every packaged build to the live production server:
 
@@ -220,7 +224,8 @@ Rules:
 - Use `https://` — a `file://` page calling `http://` is blocked as mixed content.
 - The server must allow the packaged origin, or the API answers **403**:
   `NOVACORE_PUBLIC_ORIGIN=null` (a `file://` page sends `Origin: null`). `render.yaml` sets this
-  already. Verify with a request that sends `Origin: null`:
+  already, but a Dashboard-created service does **not** — see B3. Confirm the live host has it before
+  shipping a package, with a request that sends `Origin: null`:
 
   ```powershell
   $u = "https://novacore-0ik3.onrender.com"
@@ -250,9 +255,12 @@ What to verify before shipping:
 
 1. Double-click the installer, launch NovaCore.
 2. Create an account, run one search, ask Gemini one question.
-3. The desktop app runs the DuckDuckGo client in its own main process (`desktop-main.js`), so search
-   works **without** any server; Gemini needs a key saved in **Gemini AI settings** (stored encrypted
-   with the OS keychain).
+3. The window is a `file://` page, so it uses the live server from `renderer.js`
+   (`https://novacore-0ik3.onrender.com`). Search goes through `desktop-main.js`'s IPC handler, which
+   fetches DuckDuckGo directly and needs no server; Gemini calls the live `/api/gemini` with the key
+   saved in **Gemini AI settings** (stored encrypted with the OS keychain) — or the server's
+   `NOVACORE_GEMINI_API_KEY` when that is configured. If Gemini returns "Could not reach NovaCore's
+   Gemini service", the host is refusing the packaged origin: set `NOVACORE_PUBLIC_ORIGIN=null`.
 
 The installer is unsigned, so Windows SmartScreen will warn users ("Unknown publisher"). For public
 distribution you need a code-signing certificate; without one, expect that warning.

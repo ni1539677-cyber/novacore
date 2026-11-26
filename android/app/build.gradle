@@ -10,10 +10,11 @@ def signingProperties = [
 ]
 def hasReleaseSigning = signingProperties.values().every { it }
 
-// The packaged app runs from file:// and cannot reach the localhost proxy used by the web build.
-// This script installs the native DuckDuckGo bridge and allows only the required network origins.
+// The packaged app runs from file:// and talks to the live production server only (see
+// renderer.js liveApiBaseUrl); no localhost proxy exists on the phone. This script installs the
+// native DuckDuckGo bridge and allows only the origins the app actually uses.
 def androidBridgeScript = "<script src=\"novacore-android-bridge.js\"></script>"
-def androidContentPolicy = "connect-src 'self' https: http://localhost:* http://127.0.0.1:* https://generativelanguage.googleapis.com https://html.duckduckgo.com"
+def androidContentPolicy = "connect-src 'self' https://novacore-0ik3.onrender.com https://generativelanguage.googleapis.com https://html.duckduckgo.com https://lite.duckduckgo.com https://duckduckgo.com"
 
 android {
     namespace "com.novacore.mobile"
@@ -75,7 +76,7 @@ tasks.register("prepareNovaCoreWebAssets", Copy) {
                 "<script src=\"novacore-config.js\"></script>",
                 androidBridgeScript + "\n    <script src=\"novacore-config.js\"></script>"
             ).replace(
-                "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
+                "connect-src 'self' https://novacore-0ik3.onrender.com https://generativelanguage.googleapis.com",
                 androidContentPolicy
             )
         }
@@ -109,6 +110,12 @@ tasks.register("verifyNovaCoreWebAssets") {
         }
         if (!page.isFile() || !page.text.contains("novacore-android-bridge.js")) {
             throw new GradleException("index.html does not load novacore-android-bridge.js; on-device search would fail.")
+        }
+        if (!page.text.contains("https://novacore-0ik3.onrender.com")) {
+            throw new GradleException("index.html CSP does not allow the live NovaCore server; the app would be offline.")
+        }
+        if (page.text.contains("http://localhost")) {
+            throw new GradleException("index.html CSP still allows localhost; the packaged app must use the live server only.")
         }
     }
 }

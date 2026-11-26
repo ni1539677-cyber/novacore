@@ -4,8 +4,8 @@ const path = require("node:path");
 const { fileURLToPath, pathToFileURL } = require("node:url");
 const { generateGeminiResponse } = require("./gemini-api");
 const contentFilter = require("./content-filter");
-// Same DuckDuckGo client the local /api/search proxy uses; it only defines functions on load.
-const { fetchDuckDuckGoWeb, fetchDuckDuckGoImages } = require("./server");
+// Shared with server.js /api/search and the serverless adapters; packaged into the installer.
+const { fetchDuckDuckGoWeb, fetchDuckDuckGoImages } = require("./duckduckgo-search");
 
 const appHtmlPath = path.join(__dirname, "app.html");
 const appUrl = pathToFileURL(appHtmlPath).href;
@@ -110,7 +110,9 @@ function registerGeminiIpcHandlers() {
 }
 
 // The desktop window loads app.html from disk, so it has no same-origin /api/search proxy.
-// The main process runs the same DuckDuckGo lookup instead and returns the same payload shape.
+// The main process performs the DuckDuckGo lookup itself and returns the same payload shape.
+// It deliberately does not require server.js: that file (HTTP listener + static map) is not
+// packaged into the installer, so only duckduckgo-search.js is shared between the two.
 async function searchDuckDuckGo(query) {
   if (contentFilter.containsBlockedTerm(query)) {
     throw new Error(contentFilter.blockedMessage);

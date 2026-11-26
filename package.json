@@ -10,7 +10,7 @@
     "desktop:pack": "electron-builder --dir",
     "desktop:dist": "electron-builder",
     "desktop:windows": "electron-builder --win nsis",
-    "check": "node --check server.js && node --check renderer.js && node --check bootstrap.js && node --check desktop-main.js && node --check preload.js && node --check gemini-api.js && node --check content-filter.js && node --check service-worker.js && node --check api/_proxy.js",
+    "check": "node --check server.js && node --check renderer.js && node --check bootstrap.js && node --check desktop-main.js && node --check preload.js && node --check gemini-api.js && node --check duckduckgo-search.js && node --check content-filter.js && node --check service-worker.js && node --check api/_proxy.js",
     "test": "node --test",
     "deploy:check": "powershell -NoProfile -ExecutionPolicy Bypass -File ./deploy-check.ps1"
   },
@@ -28,6 +28,7 @@
     "files": [
       "content-filter.js",
       "desktop-main.js",
+      "duckduckgo-search.js",
       "preload.js",
       "gemini-api.js",
       "app.html",
