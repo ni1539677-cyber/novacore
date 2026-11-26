@@ -1713,8 +1713,16 @@ const fetchDesktopSearch = async (query) => {
 };
 
 const fetchSearchProxy = async (query, signal) => {
-  // The packaged Android app can query DuckDuckGo on-device through novacore-android-bridge.js.
+  // In a packaged build search goes through the live backend. The Electron main process and the
+  // Android bridge both call POST <apiBaseUrl>/api/search themselves, i.e. server-to-server, so a
+  // file:// page never has to pass the host's browser CORS check (Origin: null) for search.
+  if (desktopApi && typeof desktopApi.searchWeb === "function") {
+    const result = await fetchDesktopSearch(query);
+    if (result || signal.aborted) return result;
+  }
   if (isNativeSearchAvailable()) {
+    // Older Android package without the host-based bridge: DuckDuckGo is fetched on-device by
+    // MainActivity and the result is handed back as the same payload shape.
     const native = await window.novaCoreSearch.search(query);
     if (signal.aborted) return null;
     return {
@@ -1724,10 +1732,6 @@ const fetchSearchProxy = async (query, signal) => {
       imageResults: sanitizeImageResults(native?.imageResults),
       warnings: Array.isArray(native?.warnings) ? native.warnings.filter((item) => typeof item === "string") : [],
     };
-  }
-  if (desktopApi && typeof desktopApi.searchWeb === "function") {
-    const result = await fetchDesktopSearch(query);
-    if (result || signal.aborted) return result;
   }
   if (isDesktopShell && !apiBaseUrl) {
     // A file:// page with no configured API origin cannot reach a relative /api/search URL.
@@ -2230,17 +2234,21 @@ const generateDesktopResponse = async (prompt) => {
 
 const generateBrowserResponse = async (prompt) => {
   const apiKey = typeof localSettings.geminiApiKey === "string" ? localSettings.geminiApiKey.trim() : "";
-  if (!apiKey) throw new Error("Add your Gemini API key in Gemini AI settings before asking for a live answer.");
-  let response;
-  if (isDesktopShell && !apiBaseUrl && typeof window.NovaCoreGemini?.generateGeminiResponse === "function") {
-    // Only reached when a packaged build has no API origin at all: call Google directly with the
-    // saved key. With the live server configured, the proxy below is used instead.
+  // A packaged page (file://) sends Origin: null. Browsers block that cross-origin fetch unless the
+  // host lists "null" in NOVACORE_PUBLIC_ORIGIN, which is a deployment setting the app cannot fix.
+  // Inside the Electron app the call already happens server-to-server in the main process; the
+  // Android bridge does the same (novacore-android-bridge.js -> MainActivity). Only a plain browser
+  // page, served from the same origin as the API, uses the fetch path below.
+  if (isDesktopShell && typeof window.NovaCoreGemini?.generateGeminiResponse === "function") {
+    if (!apiKey) throw new Error("Add your Gemini API key in Gemini AI settings before asking for a live answer.");
     const direct = await window.NovaCoreGemini.generateGeminiResponse({ apiKey, prompt });
     if (!direct || typeof direct.text !== "string" || !direct.text.trim()) {
       throw new Error("Google Gemini returned no answer. Try rephrasing the prompt.");
     }
     return { text: direct.text.trim(), sources: sanitizeGeminiSources(direct.sources) };
   }
+  if (!apiKey) throw new Error("Add your Gemini API key in Gemini AI settings before asking for a live answer.");
+  let response;
   try {
     response = await fetch(geminiProxyPath, {
       method: "POST",

@@ -68,12 +68,20 @@ const staticFiles = new Map([
   ["/icons/apple-touch-icon.png", ["icons/apple-touch-icon.png", "image/png"]],
   // Browsers request this automatically; answering it avoids a 404 on every page load.
   ["/favicon.ico", ["icons/icon.ico", "image/x-icon"]],
-  // Downloads are streamed from build output that is deliberately not copied into a deployed
-  // container, so a cloud instance answers 404 "not built yet" instead of failing at startup.
+  // Downloads are committed build outputs; the Dockerfile copies them so the hosted site can serve
+  // them. A missing file answers 404 "not built yet" in the UI, never a broken partial download.
   ["/app-setup.exe", ["dist/NovaCore-Setup-1.0.0.exe", "application/octet-stream", "attachment; filename=\"app-setup.exe\""]],
-  ["/app-debug.apk", ["downloads/NovaCore-Android-debug.apk", "application/vnd.android.package-archive", "attachment; filename=\"app-debug.apk\""]],
+  ["/app-debug.apk", ["downloads/app-debug.apk", "application/vnd.android.package-archive", "attachment; filename=\"app-debug.apk\""]],
+  ["/downloads/app-setup.exe", ["dist/NovaCore-Setup-1.0.0.exe", "application/octet-stream", "attachment; filename=\"app-setup.exe\""]],
   ["/downloads/NovaCore-Setup-1.0.0.exe", ["dist/NovaCore-Setup-1.0.0.exe", "application/octet-stream", "attachment; filename=\"NovaCore-Setup-1.0.0.exe\""]],
+  ["/downloads/app-debug.apk", ["downloads/app-debug.apk", "application/vnd.android.package-archive", "attachment; filename=\"app-debug.apk\""]],
+  ["/downloads/NovaCore-Android-debug.apk", ["downloads/NovaCore-Android-debug.apk", "application/vnd.android.package-archive", "attachment; filename=\"NovaCore-Android-debug.apk\""]],
   ["/downloads/NovaCore-Android.apk", ["downloads/NovaCore-Android.apk", "application/vnd.android.package-archive", "attachment; filename=\"NovaCore-Android.apk\""]],
+  // The web installer is a small stub that downloads its payload (see build-windows-installer.ps1),
+  // so both files must be reachable and served as binary downloads by the same host.
+  ["/downloads/novacore-local-search-1.0.0-x64.nsis.7z", ["dist/novacore-local-search-1.0.0-x64.nsis.7z", "application/octet-stream"]],
+  ["/dist/novacore-local-search-1.0.0-x64.nsis.7z", ["dist/novacore-local-search-1.0.0-x64.nsis.7z", "application/octet-stream"]],
+  ["/latest.yml", ["dist/latest.yml", "text/yaml; charset=utf-8"]],
 ]);
 // The api/ folder holds the Vercel serverless adapters. A hosted gateway may send /api/* requests
 // here, so this server answers them itself instead of letting static hosting expose the files.
@@ -104,7 +112,8 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (requestUrl.pathname === "/api/health" && request.method === "GET") {
+  // GET and HEAD both answer: platform health checks and monitoring tools often probe with HEAD.
+  if (requestUrl.pathname === "/api/health" && (request.method === "GET" || request.method === "HEAD")) {
     sendJson(response, 200, {
       provider: "DuckDuckGo",
       requiresApiKey: false,

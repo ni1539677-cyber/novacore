@@ -14,14 +14,28 @@ WORKDIR /app
 COPY package.json server.js gemini-api.js content-filter.js duckduckgo-search.js ./
 COPY app.html landing.html style.css bootstrap.js novacore-config.js renderer.js manifest.webmanifest service-worker.js ./
 COPY icons ./icons
-# The landing page's Android download points at this build output. Without it the served page
-# would answer 404 for its own download button.
+# Download routes served by server.js (staticFiles):
+#   /app-setup.exe, /downloads/app-setup.exe, /downloads/NovaCore-Setup-1.0.0.exe
+#                              -> dist/NovaCore-Setup-1.0.0.exe
+#   /app-debug.apk, /downloads/app-debug.apk, /downloads/NovaCore-Android-debug.apk
+#                              -> downloads/app-debug.apk / downloads/NovaCore-Android-debug.apk
+# Both are committed build outputs, so the image ships them. A route whose file is absent answers
+# 404 "not built yet", which a visitor sees as "File wasn't available on site".
+# The installer is a *web* installer: a ~1.3 MB stub (app-setup.exe) that downloads its payload.
+# Both files are committed under dist/ and copied here, so /app-setup.exe hands the user the stub and
+# /dist/novacore-local-search-1.0.0-x64.nsis.7z serves the payload it fetches.
+ARG NOVACORE_PUBLIC_URL=https://novacore-0ik3.onrender.com
+COPY dist/NovaCore-Setup-1.0.0.exe ./dist/NovaCore-Setup-1.0.0.exe
+COPY dist/novacore-local-search-1.0.0-x64.nsis.7z ./dist/novacore-local-search-1.0.0-x64.nsis.7z
+COPY dist/latest.yml ./dist/latest.yml
+COPY build-windows-installer.ps1 ./build-windows-installer.ps1
 COPY downloads ./downloads
 
 # Fail the image build, not the deploy, if a local require() is missing from the COPY list above.
 # Requiring server.js only defines functions (it starts listening only when run directly).
 RUN node -e "require('./server.js'); require('./content-filter.js'); require('./gemini-api.js'); require('./duckduckgo-search.js');" \
-  && node --check server.js
+  && node --check server.js \
+  && node -e "const fs=require('fs');const need=['dist/NovaCore-Setup-1.0.0.exe','dist/novacore-local-search-1.0.0-x64.nsis.7z','downloads/app-debug.apk','downloads/NovaCore-Android-debug.apk'];const missing=need.filter((f)=>!fs.existsSync(f)||fs.statSync(f).size<100000);if(missing.length){console.error('Missing or truncated download(s): '+missing.join(', '));process.exit(1);}console.log('Downloads ready:',need.map((f)=>f+'='+fs.statSync(f).size).join(' '));"
 
 # Run as the unprivileged user that ships with the official Node images.
 USER node

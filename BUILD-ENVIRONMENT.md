@@ -47,3 +47,24 @@ npm run desktop:windows
   It prints `asar files`, the `liveApiBaseUrl` / proxy paths baked into `renderer.js`, and checks
   that every relative `require()` in `desktop-main.js` is actually inside the asar.
 - The installer is unsigned, so Windows SmartScreen warns on first run.
+
+## Why the Windows installer is split (`split: true`)
+
+Electron's runtime is ~238 MB uncompressed and this Electron 45 build stays that size even when
+packaged from the official release zip with `compression: "maximum"`, so a single-file NSIS
+installer lands around 107 MB — **above GitHub's 100 MB per-file hard limit**, which `git push`
+refuses and no repository setting can raise (Git LFS is not installed here).
+
+`nsis.split: true` lets electron-builder ship:
+
+- `dist/NovaCore-Setup-1.0.0.exe` — the small setup stub the user double-clicks (served at
+  `/app-setup.exe`),
+- `dist/NovaCore-Setup-1.0.0.exe.7z.001 …007z.00N` — the payload, ~24 MB per part (`~40 MB` on the
+  web server, see `differentialPackage`),
+
+and the stub downloads the remaining parts from the URL it was built with. Both are committed and
+`Dockerfile` copies `dist/NovaCore-Setup-1.0.0.exe`; the payload parts live next to it and are served
+by the same static host when present.
+
+To produce a single self-contained installer instead, either publish it outside the repository
+(GitHub Release assets allow up to 2 GB) or install Git LFS and track `dist/*.exe*`.

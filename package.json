@@ -9,7 +9,7 @@
     "desktop": "electron .",
     "desktop:pack": "electron-builder --dir",
     "desktop:dist": "electron-builder",
-    "desktop:windows": "electron-builder --win nsis",
+    "desktop:windows": "electron-builder --win nsis-web",
     "check": "node --check server.js && node --check renderer.js && node --check bootstrap.js && node --check desktop-main.js && node --check preload.js && node --check gemini-api.js && node --check duckduckgo-search.js && node --check content-filter.js && node --check service-worker.js && node --check api/_proxy.js",
     "test": "node --test",
     "deploy:check": "powershell -NoProfile -ExecutionPolicy Bypass -File ./deploy-check.ps1"
@@ -22,6 +22,8 @@
   "build": {
     "appId": "com.novacore.desktop",
     "productName": "NovaCore",
+    "compression": "maximum",
+    "electronLanguages": ["en-US"],
     "directories": {
       "output": "dist"
     },
@@ -39,10 +41,18 @@
       "icons/**"
     ],
     "win": {
-      "target": "nsis",
+      "target": ["nsis-web"],
       "icon": "icons/icon.ico",
-      "artifactName": "NovaCore-Setup-${version}.${ext}"
+      "artifactName": "NovaCore-Setup-${version}.${ext}",
+      "compression": "store"
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://novacore-0ik3.onrender.com/dist",
+        "useMultipleRangeRequest": false
+      }
+    ],
     "nsis": {
       "oneClick": true,
       "perMachine": false,

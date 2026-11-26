@@ -5,6 +5,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
+const isDownloadArtifact = (source) => /\.(exe|apk)$/i.test(source);
 const image = path.join(require("node:os").tmpdir(), `novacore-image-${Date.now()}`);
 
 const dockerfile = fs.readFileSync(path.join(root, "Dockerfile"), "utf8");
@@ -27,6 +28,13 @@ for (const { source, targetDir } of listed) {
   const to = path.join(image, targetDir);
   if (!fs.existsSync(from)) {
     console.log(`SKIP (not in repo): ${source}`);
+    continue;
+  }
+  // Only the download artifacts are needed by the image; dist/win-unpacked is hundreds of MB of
+  // Electron build tree that the Dockerfile never copies file-by-file.
+  if (isDownloadArtifact(source)) {
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
     continue;
   }
   fs.cpSync(from, to, { recursive: true });
@@ -87,7 +95,24 @@ const ready = async () => {
       const response = await fetch(url).catch(() => null);
       if (response?.ok) {
         const body = await response.json();
-        finish(0, `health: ${JSON.stringify(body)}\n\nPASS: image starts and answers /api/health`);
+        // Download routes must return real bytes, not the 404 "not built yet" page a visitor sees
+        // as "File wasn't available on site".
+        const downloads = [];
+        for (const route of ["/app-setup.exe", "/app-debug.apk", "/downloads/app-setup.exe", "/downloads/NovaCore-Setup-1.0.0.exe"]) {
+          const head = await fetch(`http://127.0.0.1:${match[1]}${route}`, { method: "HEAD" }).catch(() => null);
+          downloads.push({
+            route,
+            status: head ? head.status : "ERR",
+            type: head?.headers.get("content-type") || "",
+            length: Number(head?.headers.get("content-length") || 0),
+          });
+        }
+        const broken = downloads.filter((item) => item.status !== 200 || item.length < 100_000);
+        finish(broken.length ? 1 : 0, [
+          `health: ${JSON.stringify(body)}`,
+          ...downloads.map((item) => `  ${item.status} ${item.route} (${item.length} bytes, ${item.type})`),
+          broken.length ? `\nFAIL: download route(s) not served: ${broken.map((b) => b.route).join(", ")}` : "\nPASS: image starts, answers /api/health, and serves both downloads",
+        ].join("\n"));
         return;
       }
     }

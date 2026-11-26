@@ -1,0 +1,11 @@
+﻿version: 1.0.0
+files:
+  - url: NovaCore-Setup-1.0.0.exe
+    sha512: 3gtia9s8M/cy4BJ4OaN4wZwIKxXUNVNCvqNc699JEnr0AFwrfyU/UyhKdtof6YHf9NalI0INlZPIVJegDCRg6A==
+path: NovaCore-Setup-1.0.0.exe
+packages:
+  x64:
+    size: 93201357
+    sha512: K16AZC+pqBf3fyCA6jyQFu6llvVxI2NQGYsaIvh6/03JRltnWg2F5m64KOHhRxZH6724pkUtSL10jl4k74NWbg==
+    path: novacore-local-search-1.0.0-x64.nsis.7z
+    file: novacore-local-search-1.0.0-x64.nsis.7z

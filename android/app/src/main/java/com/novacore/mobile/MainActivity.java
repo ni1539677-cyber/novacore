@@ -40,6 +40,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class MainActivity extends Activity {
+    /** The live NovaCore backend both packaged clients use (see renderer.js liveApiBaseUrl). */
+    private static final String LIVE_API_BASE = "https://novacore-0ik3.onrender.com";
     private static final String USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36";
     private static final int TIMEOUT_MS = 15000;
@@ -107,6 +109,7 @@ public final class MainActivity extends Activity {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
         webView.addJavascriptInterface(new SearchBridge(), "NovaCoreAndroidSearch");
+        webView.addJavascriptInterface(new GeminiBridge(), "NovaCoreAndroidGemini");
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -139,18 +142,32 @@ public final class MainActivity extends Activity {
                 inFlightSearchError = "Enter a search query between 1 and 4,000 characters.";
                 return inFlightSearchError;
             }
+            // 1. Preferred: the live NovaCore backend, the same /api/search the website uses.
             try {
-                JSONObject payload = runSearch(query.trim());
-                inFlightSearchError = "";
-                return payload.toString();
-            } catch (Exception error) {
-                String message = error.getMessage();
-                if (message == null || message.trim().isEmpty()) {
-                    message = "DuckDuckGo could not complete the search. Check the connection and try again.";
+                JSONObject payload = new JSONObject();
+                payload.put("query", query.trim());
+                JSONObject result = httpPostJson(LIVE_API_BASE + "/api/search", payload, null, null);
+                if (result.has("webResults") || result.has("imageResults")) {
+                    inFlightSearchError = "";
+                    return result.toString();
                 }
-                inFlightSearchError = message;
-                return message;
+            } catch (Exception error) {
+                // 2. Backend unreachable: fall back to DuckDuckGo straight from the device.
+                try {
+                    JSONObject payload = runSearch(query.trim());
+                    inFlightSearchError = "";
+                    return payload.toString();
+                } catch (Exception fallback) {
+                    String message = fallback.getMessage();
+                    if (message == null || message.trim().isEmpty()) {
+                        message = "DuckDuckGo could not complete the search. Check the connection and try again.";
+                    }
+                    inFlightSearchError = message;
+                    return message;
+                }
             }
+            inFlightSearchError = "NovaCore search returned no results. Try again.";
+            return inFlightSearchError;
         }
 
         @JavascriptInterface
@@ -284,6 +301,202 @@ public final class MainActivity extends Activity {
         } catch (JSONException error) {
             return null;
         }
+    }
+
+    /**
+     * JavaScript bridge used by the bundled NovaCore app for Gemini answers.
+     *
+     * The page is served from file://, so calling the hosted /api/gemini with fetch() would be a
+     * cross-origin request carrying Origin: null, which the host must allow explicitly and many
+     * WebViews block outright. Doing it in Java makes it an ordinary server-to-server POST: no CORS
+     * preflight, no Origin header, and the live backend stays the single source of answers.
+     */
+    private final class GeminiBridge {
+        @JavascriptInterface
+        public String generate(Object promptArgument, Object apiKeyArgument) {
+            String prompt = promptArgument == null ? "" : String.valueOf(promptArgument);
+            String apiKey = apiKeyArgument == null ? "" : String.valueOf(apiKeyArgument).trim();
+            if (prompt.trim().isEmpty() || prompt.length() > 4000) {
+                return error("Enter a prompt between 1 and 4,000 characters.");
+            }
+            if (apiKey.length() < 10 || apiKey.length() > 512) {
+                return error("Add a valid Google Gemini API key in Gemini AI settings.");
+            }
+
+            // 1. Preferred: the live NovaCore backend, exactly like the desktop app.
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("prompt", prompt.trim());
+                JSONObject answer = httpPostJson(LIVE_API_BASE + "/api/gemini", payload,
+                        "X-Goog-Api-Key", apiKey);
+                String text = answer.optString("text", "").trim();
+                if (!text.isEmpty()) {
+                    JSONObject result = new JSONObject();
+                    result.put("text", text);
+                    result.put("sources", safeSources(answer.optJSONArray("sources")));
+                    result.put("provider", "NovaCore server");
+                    return result.toString();
+                }
+            } catch (Exception error) {
+                // 2. Host unreachable or refused: ask Google directly so the app still answers.
+                try {
+                    JSONObject direct = requestGeminiDirect(prompt.trim(), apiKey);
+                    String text = direct.optString("text", "").trim();
+                    if (!text.isEmpty()) {
+                        JSONObject result = new JSONObject();
+                        result.put("text", text);
+                        result.put("sources", safeSources(direct.optJSONArray("sources")));
+                        result.put("provider", "Google Gemini (direct)");
+                        return result.toString();
+                    }
+                    return error("Google Gemini returned no answer. Try rephrasing the prompt.");
+                } catch (Exception fallback) {
+                    String reason = fallback.getMessage();
+                    return error(reason != null && !reason.trim().isEmpty()
+                            ? reason
+                            : "Could not reach NovaCore or Google Gemini. Check the connection and try again.");
+                }
+            }
+            return error("Google Gemini returned no answer. Try rephrasing the prompt.");
+        }
+    }
+
+    private static String error(String message) {
+        JSONObject result = new JSONObject();
+        try {
+            result.put("error", message);
+        } catch (JSONException ignored) {
+            // put() on a fresh object cannot fail in practice.
+        }
+        return result.toString();
+    }
+
+    /** Posts to a JSON endpoint and returns the parsed body; throws for non-2xx with the server error. */
+    private JSONObject httpPostJson(String address, JSONObject body, String authHeader, String authValue)
+            throws IOException, JSONException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(TIMEOUT_MS);
+        connection.setReadTimeout(TIMEOUT_MS);
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("User-Agent", "NovaCore-Android");
+        if (authHeader != null && authValue != null) {
+            connection.setRequestProperty(authHeader, authValue);
+        }
+        try {
+            byte[] payload = body.toString().getBytes(StandardCharsets.UTF_8);
+            connection.setFixedLengthStreamingMode(payload.length);
+            try (java.io.OutputStream stream = connection.getOutputStream()) {
+                stream.write(payload);
+            }
+            int status = connection.getResponseCode();
+            InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            String text = readStream(stream);
+            if (status >= 400) {
+                String message = "";
+                try {
+                    message = new JSONObject(text).optString("error", "");
+                } catch (JSONException ignored) {
+                    // fall through to the generic status message
+                }
+                throw new IOException(message.isEmpty()
+                        ? "Gemini request failed (HTTP " + status + ")."
+                        : message);
+            }
+            return new JSONObject(text);
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /** Direct Google call used only when the NovaCore backend cannot be reached. */
+    private JSONObject requestGeminiDirect(String prompt, String apiKey) throws IOException, JSONException {
+        JSONObject body = new JSONObject();
+        JSONArray contents = new JSONArray();
+        JSONObject part = new JSONObject();
+        part.put("text", prompt);
+        JSONObject content = new JSONObject();
+        content.put("role", "user");
+        content.put("parts", new JSONArray().put(part));
+        contents.put(content);
+        body.put("contents", contents);
+
+        try {
+            JSONObject payload = httpPostJson(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                    body, "x-goog-api-key", apiKey);
+            JSONArray candidates = payload.optJSONArray("candidates");
+            String text = "";
+            List<String> parts = new ArrayList<>();
+            if (candidates != null && candidates.length() > 0) {
+                JSONObject contentResult = candidates.optJSONObject(0) == null
+                        ? null : candidates.optJSONObject(0).optJSONObject("content");
+                JSONArray resultParts = contentResult == null ? null : contentResult.optJSONArray("parts");
+                if (resultParts != null) {
+                    for (int index = 0; index < resultParts.length(); index++) {
+                        String value = resultParts.optJSONObject(index) == null
+                                ? "" : resultParts.optJSONObject(index).optString("text", "");
+                        if (!value.isEmpty()) {
+                            parts.add(value);
+                        }
+                    }
+                }
+                text = String.join("", parts).trim();
+            }
+            JSONObject result = new JSONObject();
+            result.put("text", text);
+            result.put("sources", new JSONArray());
+            return result;
+        } catch (IOException error) {
+            String message = error.getMessage();
+            throw new IOException(message != null && message.contains(apiKey)
+                    ? message.replace(apiKey, "[redacted]")
+                    : message);
+        }
+    }
+
+    /** Only https URLs survive, matching the renderer's own source validation. */
+    private JSONArray safeSources(JSONArray sources) {
+        JSONArray safe = new JSONArray();
+        if (sources == null) {
+            return safe;
+        }
+        for (int index = 0; index < sources.length() && index < 8; index++) {
+            JSONObject source = sources.optJSONObject(index);
+            if (source == null) {
+                continue;
+            }
+            String url = safeUrl(source.optString("url", ""));
+            if (url.isEmpty() || !url.startsWith("https://")) {
+                continue;
+            }
+            JSONObject item = new JSONObject();
+            try {
+                item.put("title", source.optString("title", ""));
+                item.put("url", url);
+                safe.put(item);
+            } catch (JSONException ignored) {
+                // skip malformed entries
+            }
+        }
+        return safe;
+    }
+
+    private String readStream(InputStream stream) throws IOException {
+        if (stream == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            char[] buffer = new char[8192];
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                builder.append(buffer, 0, read);
+            }
+        }
+        return builder.toString();
     }
 
     private List<WebResult> parseWebResults(String html) {
