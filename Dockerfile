@@ -9,12 +9,19 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 # Only the files the server actually serves/needs. No node_modules required.
-COPY package.json server.js gemini-api.js content-filter.js ./
+# Every local module server.js requires must be listed here, or the container starts and then
+# exits with "Cannot find module". The RUN below proves the list is complete at build time.
+COPY package.json server.js gemini-api.js content-filter.js duckduckgo-search.js ./
 COPY app.html landing.html style.css bootstrap.js novacore-config.js renderer.js manifest.webmanifest service-worker.js ./
 COPY icons ./icons
 # The landing page's Android download points at this build output. Without it the served page
 # would answer 404 for its own download button.
 COPY downloads ./downloads
+
+# Fail the image build, not the deploy, if a local require() is missing from the COPY list above.
+# Requiring server.js only defines functions (it starts listening only when run directly).
+RUN node -e "require('./server.js'); require('./content-filter.js'); require('./gemini-api.js'); require('./duckduckgo-search.js');" \
+  && node --check server.js
 
 # Run as the unprivileged user that ships with the official Node images.
 USER node
